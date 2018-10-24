@@ -31,6 +31,9 @@ LINE_CHANNEL_SECRET=29a26afc78e29e8cce3be64358cbfb7c</Environment>
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="AnalyzeImage.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="app.py">
       <SubType>Code</SubType>
     </Compile>
