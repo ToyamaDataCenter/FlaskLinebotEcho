@@ -11,8 +11,17 @@ import json
 import datetime
 import time
 import traceback
+import uuid
+
+import pyqrcode
 
 import AnalyzeImage
+import TranslatorText
+import LogWriter
+
+from PIL import(
+    Image
+)
 
 from flask import (
    Flask,
@@ -34,12 +43,7 @@ from linebot.models import (
     TextMessage,
     ImageMessage,
     TextSendMessage,
-)
-
-from azure.storage.blob import (
-    BlockBlobService,
-    AppendBlobService,
-    PublicAccess
+    ImageSendMessage,
 )
 
 
@@ -68,159 +72,38 @@ app.config[ 'JSON_AS_ASCII' ]   = False
 
 DEBUG_MODE  = bool(os.getenv( 'DEBUG_MODE', False ))
 
-COMPUTER_VISION_KEY = os.getenv( 'AZURE_COMPUTER_VISION_KEY', None );
+COMPUTER_VISION_KEY = os.getenv( 'AZURE_COMPUTER_VISION_KEY',   None );
+TRANSLATOR_TEXT_KEY = os.getenv( 'AZURE_TRANSLATOR_TEXT_KEY',   None );
+TEXT_ANALYTICS_KEY  = os.getenv( 'AZURE_TEXT_ANALYTICS_KEY',    None );
 
-account_name        = os.getenv( 'AZURE_STORAGE_ACCOUNT_NAME', None );
-account_key         = os.getenv( 'AZURE_STORAGE_ACCOUNT_KEY',  None );
-log_container_name  = r'log-files';
-log_file_name       = r"";
+STORAGE_NAME        = os.getenv( 'AZURE_STORAGE_ACCOUNT_NAME', None );
+STORAGE_KEY         = os.getenv( 'AZURE_STORAGE_ACCOUNT_KEY',  None );
+
+if( DEBUG_MODE ):
+    print( "STORAGE_NAME = '{0}'".format( STORAGE_NAME ) );
+    print( "STORAGE_KEY = '{0}'".format( STORAGE_KEY ) );
+#}if
 
 # get channel_secret and channel_access_token from your environment variable
 
 channel_access_token    = os.getenv( 'LINE_CHANNEL_ACCESS_TOKEN', None )
 channel_secret          = os.getenv( 'LINE_CHANNEL_SECRET', None )
 
-if channel_secret is None:
+if not DEBUG_MODE and channel_secret is None:
     print('Specify LINE_CHANNEL_SECRET as environment variable.')
     sys.exit(1)
 
-if channel_access_token is None:
+if not DEBUG_MODE and channel_access_token is None:
     print('Specify LINE_CHANNEL_ACCESS_TOKEN as environment variable.')
     sys.exit(1)
 
-line_bot_api    = LineBotApi( channel_access_token )
-parser          = WebhookParser( channel_secret )
-
-
-hellopython = "Hello Python!";
-
-def CreateLogFile():
-    """ ログファイルを作成する。WriteLog を呼び出す前に実行すること。 """
-
-    # global宣言
-    global log_file_name
-
-    szRet = "";
-    if( DEBUG_MODE ):
-        return( "Debug モードのためスキップします。" );
-
-    try:
-        if( 0 == len( log_file_name ) ):
-            szRet = "AppendBlobService";
-            blob_service    = AppendBlobService(
-                account_name,
-                account_key
-            );
-            szRet = "create_container";
-            bIsExists = blob_service.exists(
-                log_container_name
-            );
-            if bIsExists:
-                pass;
-            else:
-                blob_service.create_container(
-                    log_container_name,
-                    public_access=PublicAccess.Blob
-                );
-
-            #ログファイル名の決定
-            log_file_name   = r"{0:%Y-%m-%dT%H-%M-%S.log}".format( datetime.datetime.now() );
-
-            bIsExists = blob_service.exists(
-                log_container_name,
-                log_file_name
-            );
-            if bIsExists:
-                szRet = "already blob."
-            else:
-                szRet = "create_blob";
-                blob_service.create_blob(
-                    log_container_name,
-                    log_file_name
-                );
-            szRet = "OK";
-        else:
-            szRet   = "Already called."
-        #}if
-    except Exception as e:
-        #szRet = "Log exception";
-        szRet   = szRet + "\r\n" + str( e );
-        pass;
-    return szRet;
-
-def WriteLog( txt ):
-    """ ログファイルにテキストを出力する。末尾に改行コードが追加される。 """
-    szRet = "";
-    if( DEBUG_MODE ):
-        print( r"{0:%Y-%m-%d %H:%M:%S}".format( datetime.datetime.now() ) + r" : " + txt + "\r\n" );
-        return( "Debug モードのためスキップしました。" );
-
-    try:
-        #ログファイルの作成
-        CreateLogFile();
-
-        szRet = "AppendBlobService";
-        blob_service    = AppendBlobService(
-            account_name,
-            account_key
-        );
-        szRet = "append_blob_from_text";
-        blob_service.append_blob_from_text(
-            log_container_name,
-            log_file_name,
-            r"{0:%Y-%m-%d %H:%M:%S}".format( datetime.datetime.now() ) + r" : " + txt + "\r\n"
-        )
-        szRet = "OK";
-    except:
-        #szRet = "Log exception";
-        pass;
-    #try
-
-    return szRet;
-#
-
-def WriteBlob( blob_name, txt ):
-    """ 単一 BLOB ファイルを作成しテキストを保存する。 """
-    szRet   = ""
-    if( DEBUG_MODE ):
-        return( "Debug モードのため書き込みをしません。" );
-
-    try:
-        #blob_name = r'sample.txt';
-
-        szRet = "BlockBlobService"
-        blob_service = BlockBlobService(account_name, account_key)
-
-        szRet = "create_container"
-        blob_service.create_container(
-            log_container_name,
-            public_access=PublicAccess.Blob
-        )
-
-        szRet = "create_blob_from_bytes"
-        #blob_service.create_blob_from_bytes(
-        #    log_container_name,
-        #    log_blob_name,
-        #    b'<center><h1>Hello World!</h1></center>',
-        #    content_settings=ContentSettings('text/html')
-        #)
-
-        szRet = "create_blob_from_text"
-        blob_service.create_blob_from_text(
-            log_container_name,
-            blob_name,
-            txt
-        )
-
-        szRet = "make_blob_url"
-        print(blob_service.make_blob_url(log_container_name, log_blob_name))
-        szRet = "OK"
-    except:
-        print( r"Exception.")
-    #try
-
-    return szRet;
-#def WriteBlob( blob_name, txt ):
+if( not DEBUG_MODE ):
+    line_bot_api    = LineBotApi( channel_access_token )
+    parser          = WebhookParser( channel_secret )
+else:
+    line_bot_api    = None;
+    parser          = None;
+#}if
 
 # Flask route decorators map / and /hello to the hello function.
 # To add other resources, create functions that generate the page contents
@@ -232,101 +115,208 @@ def hello():
     szRet   = r"Hello Python!"
     if( DEBUG_MODE ):
         szRet   += "\r\nDebug Mode.";
+    #}if
 
     return( szRet );
+#}def hello()
 
 @app.route( '/ver', methods = [ 'GET' ] )
 def ver():
     """ バージョン情報を表示する """
-    szText = WriteLog( "Show version info." );
-    if "OK" == szText:
-        szText = sys.version;
-    return szText
+    szText  = "";
+    try:
+        #//logWriter = LogWriter.LogWriter( STORAGE_NAME, STORAGE_KEY );
+        #//szText = logWriter.WriteLog( "Call uri /ver" );
+        szText  = "OK";
+        if( szText == "OK" ):
+            szText = sys.version;
+    except Exception as e:
+        szText  = str( e );
+    #}try
 
+    return szText
+#}def ver()
+
+def MakeQRCode( szText ):
+    pOrgBuffer      = None;
+    pThumbBuffer    = None;
+
+    qrcode  = pyqrcode.create( szText.encode('utf-8'), encoding="utf8");
+
+    with io.BytesIO() as qrbuffer:
+        qrcode.png( qrbuffer );
+        
+        qrbuffer.seek( 0, 0 );
+        img = Image.open( qrbuffer );
+        if( ( 1024 < img.width ) or ( 1024 < img.height ) ):
+            img = img.thumbnail( ( 1024, 1024 ), Image.ANTIALIAS );
+        #}if
+
+        #// オリジナルサイズ
+        pbyBuffer   = None;
+        with io.BytesIO() as jpgbuffer:
+            img.save( jpgbuffer, "JPEG" );  #JPEG は大文字でないとエラーになる
+            pOrgBuffer  = jpgbuffer.getvalue();
+        #}with
+
+        #// サムネイル
+        img.thumbnail( ( 240, 240 ), Image.ANTIALIAS )
+        with io.BytesIO() as jpgbuffer:
+            img.save( jpgbuffer, "JPEG" );  #JPEG は大文字でないとエラーになる
+            pThumbBuffer    = jpgbuffer.getvalue();
+        #}with
+
+        img.close();
+    #}with
+
+    return( pOrgBuffer, pThumbBuffer );
+#}def
+
+@app.route( '/qr', methods = [ 'GET' ] )
+def qr():
+    szText  = "";
+    pRet    = None;
+    try:
+        pRet    = MakeQRCode( "Hello, Python!" );
+        
+        if( ( pRet[ 0 ] is not None ) and ( pRet[ 1 ] is not None ) ):
+            szText  = "OK";
+        else:
+            szText  = "NG";
+        #}if
+    except Exception as e:
+        szText  = ""
+        szText  += str( type( e ) );
+        szText  += "\r\n";
+        szText  += str( e );
+        szText  += "\r\n";
+        szText  += traceback.format_exc();
+        print( szText );
+    #}try
+
+    return( szText );
+#}def
 
 @app.route( '/callback', methods=[ 'POST' ] )
 def LinePost():
     """  LINE からメッセージがポストされたとき  """
-    szProgress = "処理開始中";
-    WriteLog( "***** メッセージが LINE から POST されました。 *****" )
+    logWriter       = LogWriter.LogWriter( STORAGE_NAME, STORAGE_KEY )
+
+    logWriter.WriteLog( "***** メッセージが LINE から POST されました。 *****" )
     try:
         szText  = "";
 
-        szProgress = "for でヘッダーリスト作成中";
         for szKey, szValue in request.headers.items():
             szText += str( szKey ) + " : " + str( szValue ) + "\r\n"
         #for
         szText += "\r\n"
 
         # get request body as text
-        szProgress = "body データ取得中";
         body = request.get_data( as_text = True )
         app.logger.info( "Request body: " + body )
         szText += body;
-        WriteBlob( "linepost.txt", szText );
+        logWriter.WriteLog(
+            "HTTP の内容\r\n" + szText
+        );
 
-        WriteLog( "ヘッダーから 'X-Line-Signature' 取得中……" );
+        logWriter.WriteLog( "ヘッダーから 'X-Line-Signature' 取得中……" );
         signature = request.headers[ 'X-Line-Signature' ]
 
         # parse webhook body
-        WriteLog( "webhook body を解析中……" );
+        logWriter.WriteLog( "webhook body を解析中……" );
         try:
             events = parser.parse( body, signature )
         except InvalidSignatureError as e:
             #WriteLog( "parser.parse() failed." + "\r\n" + e.message );
-            WriteLog( "X-Line-Signature と LINE_CHANNEL_SECRET が一致しません。" );
+            logWriter.WriteLog( "X-Line-Signature と LINE_CHANNEL_SECRET が一致しません。" );
             abort(400)
         except:
-            WriteLog( "何らかのエラーが発生した。" );
-            abort(400)
+            raise;
+        #}try
 
         # if event is MessageEvent and message is TextMessage, then echo text
-        WriteLog( "events を解析……" );
+        logWriter.WriteLog( "events を解析……" );
         for event in events:
             #// MessageEvent 型ではない
             if not isinstance( event, MessageEvent ):
                 continue
 
-            WriteLog( "ユーザー ID 取得中……" );
+            logWriter.WriteLog( "ユーザー ID 取得中……" );
             szUserID    = "";
             szUserName  = "";
             try:
                 if( event.source.type == "user" ):
                     szUserID    = event.source.user_id;
-                    WriteLog( "ユーザー名取得中……" );
+                    logWriter.WriteLog( "ユーザー名取得中……" );
                     pProfile    = line_bot_api.get_profile( szUserID );
                     szUserName  = pProfile.display_name + " さん";
-                    WriteLog( szUserName );
+                    logWriter.WriteLog( szUserName );
                 #}if
             except Exception as e:
-                WriteLog( str( e ) );
+                logWriter.WriteLog( str( e ) );
             #}try
 
             if isinstance( event.message, TextMessage ):
-                WriteLog( "テキスト メッセージです。" );
-                szMessage   = szUserName + "\r\n" + event.message.text;
+                logWriter.WriteLog( "テキスト メッセージです。" );
+                szMessage   = "{0}\r\n「{1}」の QR コードを作成しました。".format( szUserName, event.message.text );
+
+                #logWriter.WriteLog( "QR コードを作成中です。" );
+                #pQrBuffer   = MakeQRCode( event.message.text );
+                #szFileName  = szUserID + "\\qr-" + str( uuid.uuid4() );
+
+                ##// オリジナル画像をストレージに保存する
+                #logWriter.WriteLog( "オリジナル画像を保存中です。" );
+                #szTempFileName  = szFileName + ".jpg";
+                #logWriter.WriteBlob( szTempFileName, pQrBuffer[ 0 ] );
+                #szOrgUri    = logWriter.MakeBlobUri( szTempFileName );
+                #logWriter.WriteLog( "場所 '{0}'".format( szOrgUri ) );
+
+                ##// サムネイル画像をストレージに保存する
+                #logWriter.WriteLog( "サムネイル画像を保存中です。" );
+                #szTempFileName  = szFileName + "_s.jpg";
+                #logWriter.WriteBlob( szTempFileName, pQrBuffer[ 1 ] );
+                #szThumbUri  = logWriter.MakeBlobUri( szTempFileName );
+                #logWriter.WriteLog( "場所 '{0}'".format( szThumbUri ) );
 
                 ReplyMessage(
                     event,
+                    [
                     TextSendMessage(
                         text = szMessage
-                    )
+                    ),
+                    #ImageSendMessage(
+                    #    original_content_url    = szOrgUri,
+                    #    preview_image_url       = szThumbUri
+                    #)
+                    TextSendMessage(
+                        text = "かと思ったら、ライブラリー内でエラーが発生するため頓挫しました。"
+                    ),
+                    ]
                 )
             elif isinstance( event.message, ImageMessage ):
-                WriteLog( "画像 メッセージです。" );
+                logWriter.WriteLog( "画像 メッセージです。" );
+
+                logWriter.WriteLog( "画像コンテンツを取得中……" );
                 message_id      = event.message.id
                 message_content = line_bot_api.get_message_content( message_id )
 
+                szImageFileName = szUserID + "\\" + str( uuid.uuid4() ) + r".jpg";
+                logWriter.WriteLog( "画像コンテンツをストレージに保存しています。(ファイル名:" + szImageFileName + ")" );
+                logWriter.WriteBlob( szImageFileName, message_content.content );
+
                 image = io.BytesIO( message_content.content )
 
-                WriteLog( "Azure Computer Vision にインスタンス作成。" );
+                logWriter.WriteLog( "Azure Computer Vision にインスタンス作成。" );
                 pRestApi    = AnalyzeImage.AnalyzeImage( COMPUTER_VISION_KEY );
-                WriteLog( "Azure Computer Vision にリクエスト送信。" );
+                logWriter.WriteLog( "Azure Computer Vision にリクエスト送信。" );
                 szJson      = pRestApi.Request( image );
 
-                WriteLog( szJson );
+                logWriter.WriteLog( szJson );
 
                 pRoot   = json.loads( szJson );
+
+                szReply     = "";
+                szExplicit  = "";
 
                 #//  とりあえず説明文を取得する
                 pDesc   = pRoot[ "description" ];
@@ -340,8 +330,46 @@ def LinePost():
                     #}if
                 #}for
 
+                #// Explicit
+                #"adult":{"isAdultContent":false,"isRacyContent":false,"adultScore":0.045499119907617569,"racyScore":0.034160565584897995}
+                pAdult  = pRoot[ "adult" ];
+                szExplicit  += "KENZEN ポイント: {0}pt.".format( int( pAdult[ "adultScore" ] * 100 ) );
+                szExplicit  += "\r\n";
+                szExplicit  += "判定: ";
+                if( pAdult[ "isAdultContent" ] ):
+                    szExplicit  += "けしからん";
+                else:
+                    szExplicit  += "健全";
+                #}if
+                szExplicit  += "\r\n";
+                szExplicit  += "ギリギリポイント: {0}pt.".format( int( pAdult[ "racyScore" ] * 100 ) );
+                szExplicit  += "\r\n";
+                szExplicit  += "判定: ";
+                if( pAdult[ "isRacyContent" ] ):
+                    szExplicit  += "けしからん";
+                else:
+                    szExplicit  += "健全";
+                #}if
+                szExplicit  += "\r\n";
+
                 if( 0 < len( szCaption ) ):
-                    szReply = szUserName + "、この絵は「" + szCaption + "」"
+                    #// 英語の解説を日本語に変換
+                    pTransApi   = TranslatorText.Translate( TRANSLATOR_TEXT_KEY );
+                    logWriter.WriteLog( "英語を日本語に翻訳中。({0})".format( szCaption ) );
+                    szJson      = pTransApi.Request( szCaption );
+                    logWriter.WriteLog( szJson );
+                    pRoot       = json.loads( szJson );
+                    szTrans     = "";
+                    for pTransRoot in pRoot:
+                        #logWriter.WriteLog( str( pTransRoot ) );
+                        for pTrans in pTransRoot[ "translations" ]:
+                            logWriter.WriteLog( str( pTrans ) );
+                            szTrans += pTrans[ "text" ];
+                            #for pTextRoot in pTrans:
+                            #    logWriter.WriteLog( str( pTextRoot ) );
+                    #}for
+
+                    szReply = szUserName + "、この絵は「" + szTrans  + "(" + szCaption + ")」"
                     if( 0.8 <= lfConfidence ):
                         szReply += "です。";
                     elif( 0.6 <= lfConfidence ):
@@ -352,18 +380,34 @@ def LinePost():
                         szReply += "です。たぶん……";
                     else:
                         szReply += "だと思うけど違っていそうです。";
+                    #}if
+                    szReply += "(正確度:{0}%)".format( int( lfConfidence * 100 ) );
                 else:
                     szReply = szUserName + "、申し訳ありませんが、何の絵か全くわかりません。";
                 #}if
 
+                pReplyList  = list();
+                if( 0 < len( szReply ) ):
+                    pReplyList.append(
+                        TextSendMessage(
+                            text = szReply
+                        )
+                    )
+                #}if
+                if( 0 < len( szExplicit ) ):
+                    pReplyList.append(
+                        TextSendMessage(
+                            text = szExplicit
+                        )
+                    )
+                #}if
+
                 ReplyMessage(
                     event,
-                    TextSendMessage(
-                        text = szReply
-                    )
+                    pReplyList
                 )
             else:
-                WriteLog( "type:{0} のメッセージです。現在、サポートしていません。".format( type( event ) ) );
+                logWriter.WriteLog( "type:{0} のメッセージです。現在、サポートしていません。".format( type( event ) ) );
                 ReplyMessage(
                     event,
                     TextSendMessage(
@@ -373,7 +417,7 @@ def LinePost():
             #}if
         #}for event in events:
 
-        WriteLog( "OK" );
+        logWriter.WriteLog( "OK" );
     except Exception as e:
         #WriteLog( szProgress + "でエラー発生。" + "\r\n" + e.message );
         szMsg   = str( e ) + "\r\n" + "でエラー発生。";
@@ -383,30 +427,36 @@ def LinePost():
                 text = szMsg
             )
         );
-        WriteLog( szMsg + "\r\n" + traceback.format_exc() );
+        logWriter.WriteLog( szMsg + "\r\n" + traceback.format_exc() );
         abort(400)
+    #}try
 
-    WriteLog( "Exit LinePost()." );
+    logWriter.WriteLog( "Exit LinePost()." );
+
     return 'OK'
+#}def
 
 def ReplyMessage( event, messages ):
     """ 応答メッセージを送信します。 """
     try:
-        WriteLog( "リプライ メッセージ送信中……" );
+        #WriteLog( "リプライ メッセージ送信中……" );
         line_bot_api.reply_message(
             event.reply_token,
             messages=messages,
         )
     except:
-        WriteLog( "リプライ メッセージ送信失敗。" );
+        #WriteLog( "リプライ メッセージ送信失敗。" );
+        pass;
     #}try
 #}def
 
 @app.route( '/callback', methods=[ 'GET' ] )
 def LineGet():
     return "Ok.This uri is exists.";
+#}def
 
 # 何か
 if __name__ == '__main__':
     # Run the app server on localhost:4449
-    app.run( host = 'localhost', port = 4449 )
+    app.run( host = '0.0.0.0', port = 4449 )
+    #app.run( host = 'localhost', port = 4449 )

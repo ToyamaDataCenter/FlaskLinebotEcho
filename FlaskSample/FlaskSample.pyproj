@@ -19,8 +19,7 @@
     <WebBrowserPort>4449</WebBrowserPort>
     <InterpreterId>MSBuild|env|$(MSBuildProjectFullPath)</InterpreterId>
     <Environment>DEBUG_MODE=True
-LINE_CHANNEL_ACCESS_TOKEN=npO/i90GRrZbo3IFJB/1nHRBRS1vEkbliRjn2VX7MzHD0N+E7CIkGh5o5k2EmnSdXviDmYKlVcA443KszXETUbHDJN9ykvqKtjCMQWvSQ+TPMXcAIm9ih1TR57D/fWiVks40R6mvyeu6LuvCME5a0gdB04t89/1O/w1cDnyilFU=
-LINE_CHANNEL_SECRET=29a26afc78e29e8cce3be64358cbfb7c</Environment>
+</Environment>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
@@ -37,6 +36,9 @@ LINE_CHANNEL_SECRET=29a26afc78e29e8cce3be64358cbfb7c</Environment>
     <Compile Include="app.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="LogWriter.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="ptvsd\attach_server.py" />
     <Compile Include="ptvsd\debugger.py" />
     <Compile Include="ptvsd\ipcjson.py" />
@@ -48,6 +50,9 @@ LINE_CHANNEL_SECRET=29a26afc78e29e8cce3be64358cbfb7c</Environment>
     <Compile Include="ptvsd\util.py" />
     <Compile Include="ptvsd\__init__.py" />
     <Compile Include="ptvsd\__main__.py" />
+    <Compile Include="TranslatorText.py">
+      <SubType>Code</SubType>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <Content Include="bin\Microsoft.PythonTools.WebRole.dll" />

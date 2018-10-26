@@ -37,7 +37,7 @@ class AnalyzeImage( object ):
                 'Ocp-Apim-Subscription-Key': self._key,
             }
             szRet   = "AnalyzeImage.Request() : HTTPSConnection 作成";
-            conn = http.client.HTTPSConnection( self.EndPoint )
+            conn = http.client.HTTPSConnection( AnalyzeImage.EndPoint )
             #with conn:
             szRet   = "conn.request";
             conn.request(
