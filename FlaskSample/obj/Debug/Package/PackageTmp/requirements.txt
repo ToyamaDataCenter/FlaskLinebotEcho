@@ -16,7 +16,7 @@ future==0.16.0
 idna==2.7
 isodate==0.6.0
 itsdangerous==0.24
-Jinja2==2.10
+Jinja2==2.11.3
 line-bot-sdk==1.8.0
 MarkupSafe==1.0
 msrest==0.6.1
